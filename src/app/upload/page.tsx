@@ -11,6 +11,8 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [key, setKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // When file selected
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,7 +78,7 @@ export default function Home() {
       const keyHex = Array.from(key)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      console.log(`Save this key securely:\n\n${keyHex}`);
+      setKey(keyHex);
     } catch (e) {
       console.error(e);
       alert("Upload failed. Please try again.");
@@ -84,6 +86,37 @@ export default function Home() {
       setBusy(false);
     }
   };
+
+  function copyKey() {
+    const keyVal = document.getElementById("keyVal") as HTMLInputElement;
+    if (keyVal) {
+      navigator.clipboard.writeText(keyVal.value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  if (key) {
+    return (
+      <main>
+        <NavBar></NavBar>
+
+        <div className="mx-auto max-w-sm items-center p-6 flex gap-4 mt-6">
+          <input
+            className="border border-gray-300 p-2 rounded-md"
+            type="text"
+            readOnly
+            value={key}
+            id="keyVal"
+            size={20}
+          />
+          <Button onClick={copyKey} color={copied ? "gray" : "green"}>
+            {copied ? "Copied" : "Copy Key"}
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main>

@@ -11,7 +11,9 @@ import { getFileID } from "../utils/FileIDGen";
 function parseHexToBytes(hex: string): Uint8Array {
   const clean = hex.trim().replace(/^0x/, "").toLowerCase();
   if (!/^[0-9a-f]*$/.test(clean) || clean.length % 2 !== 0) {
-    throw new Error("Invalid hex key format.");
+    throw new Error(
+      "Invalid hex key format. Please make sure your key is correct and try again."
+    );
   }
   const out = new Uint8Array(clean.length / 2);
   if (out.length === 32) {
@@ -19,7 +21,7 @@ function parseHexToBytes(hex: string): Uint8Array {
       out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
     }
   } else {
-    throw new Error("Invalid key length: System requires 64 hex characters.");
+    throw new Error("Invalid hex key length: 64 characters required.");
   }
   return out;
 }
@@ -52,7 +54,9 @@ export default function DownloadPage() {
       const res = await fetch(`/api/download?id=${lookupId}`);
       if (!res.ok) {
         throw new Error(
-          res.status === 404 ? "File not found for this key." : "Server error"
+          res.status === 400
+            ? "File not found for this key. Make sure key is valid or File did not expire the 24-hour storage limit."
+            : "Server error"
         );
       }
       const payload = await res.json();
@@ -100,7 +104,7 @@ export default function DownloadPage() {
       <div className="mx-auto max-w-250 p-6">
         {error && <p className="text-red-400 mb-2">{error}</p>}
         <Button
-          color="blue"
+          color="green"
           disabled={busy || !keyInput}
           onClick={handleDownload}
         >

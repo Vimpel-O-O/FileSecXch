@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { storageDir } from "../upload/route";
+import {s3Client, BUCKET_NAME} from "../../utils/s3Client";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 
 export const runtime = "nodejs";
 
@@ -14,23 +13,38 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "Missing file id" }, { status: 400 });
     }
 
-    // define file paths to lookup
-    const dir = storageDir();
-    const ivPath = path.join(dir, `${lookupId}.iv`);
-    const encryptedPath = path.join(dir, `${lookupId}.bin`);
-    const metaPath = path.join(dir, `${lookupId}.json`);
+    // aws s3 files download commands
+    const getIV = new GetObjectCommand({
+                Bucket: BUCKET_NAME,
+                Key: `${lookupId}.iv`,
+    });
+
+    const getEncrypted = new GetObjectCommand({
+                Bucket: BUCKET_NAME,
+                Key: `${lookupId}.bin`,
+    });
+
+    const getMeta = new GetObjectCommand({
+                Bucket: BUCKET_NAME,
+                Key: `${lookupId}.json`,
+    });
 
     try {
-        // Read files
-        const [ivBuf, encryptedBuf, metaBuf] = await Promise.all([
-            fs.readFile(ivPath),
-            fs.readFile(encryptedPath),
-            fs.readFile(metaPath),
+        // Read files from S3
+        const [ivResponse, encryptedResponse, metaResponse] = await Promise.all([
+            s3Client.send(getIV),
+            s3Client.send(getEncrypted),
+            s3Client.send(getMeta),
         ]);
 
-        // convert binary Buffers to JSON-safe number arrays
-        const iv = Array.from(ivBuf.values());
-        const encrypted = Array.from(encryptedBuf.values());
+        // Convert streams to Buffers
+        const ivBuf = Buffer.from(await ivResponse.Body!.transformToByteArray());
+        const encryptedBuf = Buffer.from(await encryptedResponse.Body!.transformToByteArray());
+        const metaBuf = Buffer.from(await metaResponse.Body!.transformToByteArray());
+
+        // Convert binary Buffers to JSON-safe number arrays
+        const iv = Array.from(ivBuf);
+        const encrypted = Array.from(encryptedBuf);
         const meta = JSON.parse(metaBuf.toString("utf8"));
 
         return NextResponse.json({ iv, encrypted, meta });

@@ -16,9 +16,15 @@ export default function Home() {
         <TextSection>
           Hello! <br />
           This is a secure file exchange platform. Here you can upload any file
-          (Max 50MB), it will be encrypted and stored in database and encryption
-          key will be provided for you for temporary download. By giving the key
-          you will get access to download the stored file.
+          (Max 50MB), it will be encrypted locally on your machine and stored in
+          database. An encryption key will be provided for temporary download.
+          By giving the key, you will get access to download the stored file.
+          <br />
+          <br />
+          <p className="text-lg leading-relaxed text-red-400">
+            ATTENTION: Uploaded file auto-deletes after a 24-hour period. A key
+            becomes invalid.
+          </p>
         </TextSection>
       </section>
 

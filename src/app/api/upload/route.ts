@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { error } from "node:console";
-import fs from "node:fs/promises";
-import path from "node:path";
+import { BUCKET_NAME, s3Client } from "../../utils/s3Client";
+import {
+    PutObjectCommand,
+} from "@aws-sdk/client-s3";
 
 export const runtime = "nodejs";
 
@@ -15,14 +16,6 @@ type Payload = {
         fileSize?: number;
     };
 };
-
-export function storageDir() {
-    const dir = process.env.STORAGE_DIR;
-    if (!dir) {
-        throw error("Storage dir invalid.");
-    }
-    return path.resolve(dir);
-}
 
 export async function POST(req: Request) {
     try {
@@ -39,20 +32,37 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "IV must be 12 bytes" }, { status: 400 });
         }
 
-        const dir = storageDir();
-
         // convert number arrays from JSON into binary Buffers
         const iv = Buffer.from(body.iv);
         const encrypted = Buffer.from(body.encrypted);
+        
+        // upload files aws commands
+        const putIV = new PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: `${body.lookupId}.iv`,
+            Body: iv,
+            ContentType: 'application/octet-stream',
+        })
 
-        // write files
-        await fs.writeFile(path.join(dir, `${body.lookupId}.iv`), iv);
-        await fs.writeFile(path.join(dir, `${body.lookupId}.bin`), encrypted)
-        await fs.writeFile(
-            path.join(dir, `${body.lookupId}.json`), 
-            JSON.stringify(body.meta ?? {}, null, 2), 
-            "utf8"
-        );
+        const putEncrypted = new PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: `${body.lookupId}.bin`,
+            Body: encrypted,
+            ContentType: 'application/octet-stream',
+        })
+
+        const putMeta = new PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: `${body.lookupId}.json`,
+            Body: JSON.stringify(body.meta ?? {}, null, 2),
+            ContentType: 'application/json',
+        })
+
+        await Promise.all([
+            s3Client.send(putIV),
+            s3Client.send(putEncrypted),
+            s3Client.send(putMeta)
+        ]);
 
         return NextResponse.json({ ok: true });
     } catch(e) {

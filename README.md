@@ -4,8 +4,8 @@ This is a secure file exchange platform where users can upload any files (Max 50
 
 Deployed app - https://file-sec-xch.vercel.app/
 
-<a href="https://file-sec-xch.vercel.app/" target="_blank">
-  <img width="2866" height="1306" alt="CleanShot 2026-01-12 at 16 43 42@2x" src="https://github.com/user-attachments/assets/bd878800-0bcf-4ddd-98d6-3ea688d4111e" />
+<a href="https://file-sec-xch.vercel.app/" target="_blank" rel="noopener noreferrer">
+  <img src="https://github.com/user-attachments/assets/45e3ac5e-ef46-4439-96cd-348674808cde" alt="Demo GIF" />
 </a>
 
 ### Key Features

@@ -43,6 +43,7 @@ export default function DownloadPage() {
 
   const handleDownload = async () => {
     setBusy(true);
+    setError(null);
     try {
       // parse hex back to bytes
       const key = parseHexToBytes(keyInput.trim());
@@ -50,27 +51,44 @@ export default function DownloadPage() {
       // get file id
       const lookupId = await getFileID(key);
 
-      // Fetch encrypted payload + metadata by file id
+      // Request presigned GET URLs from server
       const res = await fetch(`/api/download?id=${lookupId}`);
       if (!res.ok) {
         throw new Error(
-          res.status === 400
-            ? "File not found for this key. Make sure key is valid or File did not expire the 24-hour storage limit."
+          res.status === 404
+            ? "File not found for this key. Make sure key is valid or file did not expire the 24-hour storage limit."
             : "Server error"
         );
       }
-      const payload = await res.json();
+      const { urls } = await res.json();
+
+      // Fetch all 3 objects directly from S3
+      const [ivRes, encryptedRes, metaRes] = await Promise.all([
+        fetch(urls.iv),
+        fetch(urls.bin),
+        fetch(urls.meta),
+      ]);
+
+      if (!ivRes.ok || !encryptedRes.ok || !metaRes.ok) {
+        throw new Error("Failed to download file data from storage.");
+      }
+
+      const [ivBuf, encryptedBuf, meta] = await Promise.all([
+        ivRes.arrayBuffer(),
+        encryptedRes.arrayBuffer(),
+        metaRes.json(),
+      ]);
 
       // Decrypt
       const blob = await decryptFile(
-        new Uint8Array(payload.encrypted),
-        new Uint8Array(payload.iv),
+        new Uint8Array(encryptedBuf),
+        new Uint8Array(ivBuf),
         key,
-        payload.meta?.mimeType || "application/octet-stream"
+        meta?.mimeType || "application/octet-stream"
       );
 
       // restore file name
-      const filename = payload.meta?.fileName || "file";
+      const filename = meta?.fileName || "file";
 
       // send for user to download
       downloadFile(blob, filename);

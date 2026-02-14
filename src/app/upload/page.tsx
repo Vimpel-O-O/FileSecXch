@@ -62,17 +62,43 @@ export default function Home() {
       // get file lookup id
       const lookupId = await getFileID(key); // derive using HMAC
 
-      // send payload to server
-      await fetch("/api/upload", {
+      // request presigned URLs from server
+      const presignRes = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lookupId,
-          iv: Array.from(iv),
-          encrypted: Array.from(encrypted),
-          meta: { mimeType, fileName, fileSize },
-        }),
+        body: JSON.stringify({ lookupId }),
       });
+
+      if (!presignRes.ok) {
+        throw new Error("Failed to get upload URLs");
+      }
+
+      const { urls } = await presignRes.json();
+
+      // upload directly to S3 using presigned URLs
+      const metaJson = JSON.stringify({ mimeType, fileName, fileSize });
+
+      const [ivRes, binRes, metaRes] = await Promise.all([
+        fetch(urls.iv, {
+          method: "PUT",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: new Blob([iv]),
+        }),
+        fetch(urls.bin, {
+          method: "PUT",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: new Blob([encrypted]),
+        }),
+        fetch(urls.meta, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: metaJson,
+        }),
+      ]);
+
+      if (!ivRes.ok || !binRes.ok || !metaRes.ok) {
+        throw new Error("Upload to storage failed");
+      }
 
       // Give user a key
       const keyHex = Array.from(key)
@@ -81,7 +107,9 @@ export default function Home() {
       setKey(keyHex);
     } catch (e) {
       console.error(e);
-      alert("Upload failed. Please try again.");
+      alert(
+        e instanceof Error ? e.message : "Upload failed. Please try again."
+      );
     } finally {
       setBusy(false);
     }

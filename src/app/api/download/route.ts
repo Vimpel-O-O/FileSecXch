@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import {s3Client, BUCKET_NAME} from "../../utils/s3Client";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { s3Client, BUCKET_NAME } from "../../utils/s3Client";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export const runtime = "nodejs";
 
+const PRESIGN_EXPIRES_IN = 600; // 15 minutes
+
 export async function GET(req: Request) {
-    // Parse id from URL
     const { searchParams } = new URL(req.url);
     const lookupId = searchParams.get("id");
 
@@ -13,43 +15,52 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "Missing file id" }, { status: 400 });
     }
 
-    // aws s3 files download commands
-    const getIV = new GetObjectCommand({
-                Bucket: BUCKET_NAME,
-                Key: `${lookupId}.iv`,
-    });
-
-    const getEncrypted = new GetObjectCommand({
+    try {
+        // Verify file exists before generating URLs
+        await s3Client.send(
+            new HeadObjectCommand({
                 Bucket: BUCKET_NAME,
                 Key: `${lookupId}.bin`,
-    });
+            })
+        );
 
-    const getMeta = new GetObjectCommand({
-                Bucket: BUCKET_NAME,
-                Key: `${lookupId}.json`,
-    });
-
-    try {
-        // Read files from S3
-        const [ivResponse, encryptedResponse, metaResponse] = await Promise.all([
-            s3Client.send(getIV),
-            s3Client.send(getEncrypted),
-            s3Client.send(getMeta),
+        // Generate presigned GET URLs for all 3 objects
+        const [ivUrl, binUrl, metaUrl] = await Promise.all([
+            getSignedUrl(
+                s3Client,
+                new GetObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: `${lookupId}.iv`,
+                }),
+                { expiresIn: PRESIGN_EXPIRES_IN }
+            ),
+            getSignedUrl(
+                s3Client,
+                new GetObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: `${lookupId}.bin`,
+                }),
+                { expiresIn: PRESIGN_EXPIRES_IN }
+            ),
+            getSignedUrl(
+                s3Client,
+                new GetObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: `${lookupId}.json`,
+                }),
+                { expiresIn: PRESIGN_EXPIRES_IN }
+            ),
         ]);
 
-        // Convert streams to Buffers
-        const ivBuf = Buffer.from(await ivResponse.Body!.transformToByteArray());
-        const encryptedBuf = Buffer.from(await encryptedResponse.Body!.transformToByteArray());
-        const metaBuf = Buffer.from(await metaResponse.Body!.transformToByteArray());
-
-        // Convert binary Buffers to JSON-safe number arrays
-        const iv = Array.from(ivBuf);
-        const encrypted = Array.from(encryptedBuf);
-        const meta = JSON.parse(metaBuf.toString("utf8"));
-
-        return NextResponse.json({ iv, encrypted, meta });
-    } catch(e) {
+        return NextResponse.json({
+            urls: { iv: ivUrl, bin: binUrl, meta: metaUrl },
+        });
+    } catch (e: unknown) {
+        const errorName = (e as { name?: string })?.name;
+        if (errorName === "NotFound" || errorName === "NoSuchKey") {
+            return NextResponse.json({ error: "Not found" }, { status: 404 });
+        }
         console.error(e);
-        return NextResponse.json( { error: "Not found" }, { status: 400 });
+        return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 }
